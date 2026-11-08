@@ -76,6 +76,24 @@ def remove_grid_lines(warped, line_len=25):
     return cv2.bitwise_and(binary, cv2.bitwise_not(lines))
 
 
+def erase_line_bands(warped, ys, xs, half_width=4):
+    """Binarize the flattened grid and blank a thin band around each known grid line.
+
+    Unlike remove_grid_lines this does not guess what a line looks like, so thin
+    digits (a 1, a 7) survive. Needs the positions from find_line_positions.
+    """
+    blur = cv2.GaussianBlur(warped, (3, 3), 0)
+    binary = cv2.adaptiveThreshold(
+        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 25, 12
+    )
+    h, w = binary.shape
+    for y in ys:
+        binary[max(0, int(y) - half_width): int(y) + half_width + 1, :] = 0
+    for x in xs:
+        binary[:, max(0, int(x) - half_width): int(x) + half_width + 1] = 0
+    return binary
+
+
 def _line_peaks(profile, min_gap=15, rel_thresh=0.25):
     """Positions of peaks in a 1-D line-strength profile, strongest kept per cluster."""
     p = np.convolve(profile, np.ones(5) / 5, mode="same")
@@ -91,7 +109,7 @@ def _line_peaks(profile, min_gap=15, rel_thresh=0.25):
     return merged, p
 
 
-def _complete_lines(peaks, strength, size, n=10):
+def _complete_lines(peaks, strength, size, n=10, snap=10):
     """Turn a partial list of detected line positions into exactly n positions.
 
     Gaps between detected lines are filled using the typical spacing, then the
@@ -117,7 +135,18 @@ def _complete_lines(peaks, strength, size, n=10):
             pts.pop(0)
         else:
             pts.pop()
-    return [float(np.clip(x, 0, size - 1)) for x in pts]
+    detected = set(float(x) for x in peaks)
+    out = []
+    for x in pts:
+        x = float(np.clip(x, 0, size - 1))
+        if x not in detected:
+            # A guessed line: snap to the strongest nearby ridge, if there is one.
+            lo, hi = int(max(0, x - snap)), int(min(size, x + snap + 1))
+            window = strength[lo:hi]
+            if len(window) and window.max() > 0.08 * strength.max():
+                x = float(lo + int(np.argmax(window)))
+        out.append(x)
+    return out
 
 
 def find_line_positions(warped, detect_len=30):
@@ -168,10 +197,12 @@ def is_cell_empty(clean_cell, min_ink=0.0115):
     return (np.count_nonzero(clean_cell) / clean_cell.size) < min_ink
 
 
-def extract_cells(image):
-    """Full pipeline: photo -> (warped grid, 9x9 digit-only cells, blank mask, transform).
+def analyze_image(image):
+    """Full pipeline with everything a caller might need.
 
-    Returns None if no grid is found.
+    Returns a dict with: warped, cells (for reading digits), empty (9x9 blank
+    mask), M (photo -> flattened transform), ys and xs (grid line positions in
+    the flattened image). Returns None if no grid is found.
     """
     gray, thresh = preprocess(image)
     corners = find_grid_corners(thresh)
@@ -179,9 +210,20 @@ def extract_cells(image):
         return None
     warped, M = warp_grid(gray, corners)
     ys, xs = find_line_positions(warped)
-    cells = split_cells(remove_grid_lines(warped), ys, xs)
-    empty = [[is_cell_empty(cells[r][c]) for c in range(9)] for r in range(9)]
-    return warped, cells, empty, M
+    # Blank/filled decision: aggressive line removal, tight crop.
+    tight = split_cells(remove_grid_lines(warped, 25), ys, xs, margin=0.16)
+    # Reading digits: erase only a thin band around each detected line.
+    cells = split_cells(erase_line_bands(warped, ys, xs), ys, xs, margin=0.05)
+    empty = [[is_cell_empty(tight[r][c]) for c in range(9)] for r in range(9)]
+    return {"warped": warped, "cells": cells, "empty": empty, "M": M, "ys": ys, "xs": xs}
+
+
+def extract_cells(image):
+    """Photo -> (warped grid, 9x9 digit cells, blank mask, transform), or None."""
+    result = analyze_image(image)
+    if result is None:
+        return None
+    return result["warped"], result["cells"], result["empty"], result["M"]
 
 
 if __name__ == "__main__":

@@ -64,3 +64,82 @@ def test_grid_detection_finds_blank_cells():
     for r in range(9):
         for c in range(9):
             assert empty[r][c] == (PUZZLE[r][c] == 0), (r, c)
+
+
+def test_digit_recognition_end_to_end():
+    """Photo -> cells -> digits on a synthetic perspective-warped puzzle."""
+    import numpy as np
+    from digit_recognition import recognize_grid
+    from train_digit_model import synthetic_font_digits, sklearn_handwritten
+    from sklearn.neural_network import MLPClassifier
+
+    rng = np.random.default_rng(0)
+    parts = [synthetic_font_digits(300, rng), sklearn_handwritten(rng, repeats=2)]
+    X = np.vstack([p[0] for p in parts])
+    y = np.concatenate([p[1] for p in parts])
+    model = MLPClassifier(hidden_layer_sizes=(128,), max_iter=60, random_state=0).fit(X, y)
+
+    _, cells, empty, _ = extract_cells(make_photo(PUZZLE))
+    grid, _, _ = recognize_grid(cells, empty, model)
+    correct = sum(grid[r][c] == PUZZLE[r][c] for r in range(9) for c in range(9))
+    assert correct >= 77  # allow a few of 81 cells to be wrong
+
+
+# ---------- API ----------
+import pytest
+
+
+@pytest.fixture(scope="module")
+def client(tmp_path_factory):
+    import os
+    import joblib
+    from fastapi.testclient import TestClient
+    from sklearn.neural_network import MLPClassifier
+    from train_digit_model import synthetic_font_digits, sklearn_handwritten
+
+    rng = np.random.default_rng(0)
+    parts = [synthetic_font_digits(400, rng), sklearn_handwritten(rng, repeats=3)]
+    X = np.vstack([p[0] for p in parts])
+    y = np.concatenate([p[1] for p in parts])
+    model = MLPClassifier(hidden_layer_sizes=(128,), max_iter=80, random_state=0).fit(X, y)
+    path = tmp_path_factory.mktemp("m") / "model.joblib"
+    joblib.dump(model, path)
+    os.environ["DIGIT_MODEL_PATH"] = str(path)
+    from api import app
+    with TestClient(app) as c:
+        yield c
+
+
+def test_api_health(client):
+    assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_api_solve_grid(client):
+    r = client.post("/solve-grid", json={"grid": PUZZLE})
+    body = r.json()
+    assert r.status_code == 200
+    assert body["solution_count"] == 1
+    assert body["solution"][0] == [5, 3, 4, 6, 7, 8, 9, 1, 2]
+
+
+def test_api_solve_grid_rejects_bad_shape(client):
+    assert client.post("/solve-grid", json={"grid": [[0] * 9] * 8}).status_code == 422
+    assert client.post("/solve-grid", json={"grid": [[10] * 9] * 9}).status_code == 422
+
+
+def test_api_solve_photo(client):
+    ok, png = cv2.imencode(".png", make_photo(PUZZLE))
+    r = client.post("/solve", files={"file": ("p.png", png.tobytes(), "image/png")})
+    body = r.json()
+    assert r.status_code == 200
+    assert body["solution_count"] == 1
+    assert body["solution"][0] == [5, 3, 4, 6, 7, 8, 9, 1, 2]
+    assert body["overlay_png_base64"]
+
+
+def test_api_rejects_non_image_and_blank_image(client):
+    r = client.post("/solve", files={"file": ("x.txt", b"hello", "text/plain")})
+    assert r.status_code == 400
+    ok, png = cv2.imencode(".png", np.full((400, 400, 3), 255, np.uint8))
+    r = client.post("/solve", files={"file": ("b.png", png.tobytes(), "image/png")})
+    assert r.status_code == 422
