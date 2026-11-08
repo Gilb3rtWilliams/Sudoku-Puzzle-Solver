@@ -143,3 +143,25 @@ def test_api_rejects_non_image_and_blank_image(client):
     ok, png = cv2.imencode(".png", np.full((400, 400, 3), 255, np.uint8))
     r = client.post("/solve", files={"file": ("b.png", png.tobytes(), "image/png")})
     assert r.status_code == 422
+
+
+# ---------- /check ----------
+def test_api_check_grades_answers(client):
+    grid = [row[:] for row in PUZZLE]
+    grid[0][2] = 4  # right
+    grid[0][3] = 5  # wrong: row 1 already has a given 5
+    r = client.post("/check", json={"givens": PUZZLE, "grid": grid})
+    body = r.json()
+    assert r.status_code == 200
+    assert body["status"] == "ok"
+    assert (body["entered"], body["correct"], body["wrong"]) == (2, 1, 1)
+    m = body["mistakes"][0]
+    assert (m["row"], m["col"], m["entered"], m["correct_digit"]) == (0, 3, 5, 6)
+    assert m["kind"] == "clash" and "given clue" in m["explanation"]
+
+
+def test_api_check_rejects_changed_given_and_bad_shape(client):
+    grid = [row[:] for row in PUZZLE]
+    grid[0][0] = 9
+    assert client.post("/check", json={"givens": PUZZLE, "grid": grid}).status_code == 422
+    assert client.post("/check", json={"givens": PUZZLE, "grid": [[0] * 9] * 8}).status_code == 422

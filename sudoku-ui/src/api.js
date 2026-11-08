@@ -32,3 +32,13 @@ export function solveGrid(grid) {
     body: JSON.stringify({ grid: rows }),
   })
 }
+
+/** Grade the player's answers. `givens` is the locked puzzle, `grid` is clues plus answers (flat arrays of 81). */
+export function checkAnswers(givens, grid) {
+  const rows = (flat) => Array.from({ length: 9 }, (_, r) => flat.slice(r * 9, r * 9 + 9))
+  return request('/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ givens: rows(givens), grid: rows(grid) }),
+  })
+}

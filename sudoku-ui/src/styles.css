@@ -419,6 +419,221 @@ body {
   border: 2px dashed var(--red-pen);
 }
 
+/* ---------- progress steps ---------- */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--chalk-soft);
+  opacity: 0.8;
+}
+
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1.5px solid var(--ruling-strong);
+  border-radius: 50%;
+  font-size: 0.8rem;
+}
+
+.step-current {
+  color: var(--chalk);
+  opacity: 1;
+}
+
+.step-current .step-num {
+  background: var(--chalk);
+  border-color: var(--chalk);
+  color: var(--night);
+}
+
+.step-done .step-num {
+  border-color: var(--pencil);
+  color: var(--pencil);
+}
+
+/* ---------- playing: clues, answers, mistakes ---------- */
+.cell.given {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cell.given input {
+  cursor: default;
+}
+
+.cell.entry input {
+  color: var(--pencil);
+}
+
+.cell.wrong {
+  background: var(--red-wash);
+}
+
+.cell.wrong input {
+  color: var(--red-text);
+}
+
+.cell.wrong::after {
+  content: '';
+  position: absolute;
+  inset: 8%;
+  border: 2px solid var(--red-pen);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.cell.related {
+  background: rgba(120, 160, 255, 0.24);
+}
+
+.review-title {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-hand);
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.review-lead {
+  margin: 0;
+  color: var(--chalk-soft);
+}
+
+.review-lead-bad {
+  color: var(--red-text);
+  font-weight: 600;
+}
+
+.review-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin: 1rem 0 0;
+}
+
+.review-stats div {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.review-stats dt {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--chalk-soft);
+}
+
+.review-stats dd {
+  margin: 0;
+  font-family: var(--font-hand);
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+
+.mistakes {
+  display: grid;
+  gap: 0.9rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mistake {
+  padding: 0.9rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--ruling);
+  border-left: 3px solid var(--red-pen);
+  border-radius: 0.5rem;
+}
+
+.mistake-active {
+  background: var(--panel-hover);
+  border-color: var(--focus);
+  border-left-color: var(--red-pen);
+}
+
+.mistake-head {
+  appearance: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.75rem;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 700;
+  color: var(--chalk);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mistake-head:hover {
+  text-decoration: underline;
+}
+
+.mistake-head:focus-visible,
+.link-btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.mistake-entered {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--red-text);
+}
+
+.mistake-why {
+  margin: 0.45rem 0 0.7rem;
+}
+
+.mistake-answer {
+  margin: 0;
+  color: var(--chalk-soft);
+}
+
+.mistake-answer strong {
+  font-family: var(--font-hand);
+  font-size: 1.3rem;
+  color: var(--chalk);
+}
+
+.btn-small {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.link-btn {
+  appearance: none;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--focus);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 52rem) {
+  /* on a phone the board comes first and the review panel sits under it */
+  .workspace-play .review {
+    order: 2;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

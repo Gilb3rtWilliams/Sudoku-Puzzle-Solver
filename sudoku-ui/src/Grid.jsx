@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useImperativeHandle, useRef } from 'react'
 import { SIZE, rowOf, colOf } from './sudoku.js'
 
 /**
@@ -7,9 +7,14 @@ import { SIZE, rowOf, colOf } from './sudoku.js'
  * - `solution`: optional solved grid, shown in pencil inside blank cells
  * - `uncertain`: Set of indexes the reader wasn't sure about
  * - `conflicts`: Set of indexes whose digit repeats in a row, column or box
+ * - `givens`: when playing, the locked clues (flat array, 0 = player-editable); null while setting up
+ * - `wrong`: Set of indexes the checker marked wrong
+ * - `related`: Set of indexes to wash in blue (the cells that explain a mistake)
+ * - `ref`: exposes focus(i) so a mistake card can jump to its cell
  */
-export default function Grid({ grid, solution, uncertain, conflicts, disabled, onChange }) {
+export default function Grid({ grid, solution, uncertain, conflicts, disabled, onChange, givens = null, wrong, related, ref }) {
   const inputs = useRef([])
+  useImperativeHandle(ref, () => ({ focus: (i) => inputs.current[i]?.focus() }), [])
 
   const focusCell = (i) => inputs.current[i]?.focus()
 
@@ -39,12 +44,19 @@ export default function Grid({ grid, solution, uncertain, conflicts, disabled, o
         if (r % 3 === 2 && r < SIZE - 1) classes.push('box-bottom')
         if (uncertain.has(i)) classes.push('uncertain')
         if (conflicts.has(i)) classes.push('conflict')
+        const locked = !!givens?.[i]
+        if (locked) classes.push('given')
+        else if (givens && value) classes.push('entry')
+        if (wrong?.has(i)) classes.push('wrong')
+        if (related?.has(i)) classes.push('related')
         const solved = !value && solution ? solution[i] : 0
         const label =
           `Row ${r + 1}, column ${c + 1}` +
+          (locked ? ', given clue' : '') +
           (value ? `, ${value}` : solved ? `, solved as ${solved}` : ', blank') +
           (uncertain.has(i) ? ', check this cell' : '') +
-          (conflicts.has(i) ? ', repeats in its row, column or box' : '')
+          (conflicts.has(i) ? ', repeats in its row, column or box' : '') +
+          (wrong?.has(i) ? ', marked wrong' : '')
         return (
           <div className={classes.join(' ')} key={i}>
             <input
@@ -56,6 +68,7 @@ export default function Grid({ grid, solution, uncertain, conflicts, disabled, o
               value={value || ''}
               placeholder={solved ? String(solved) : ''}
               disabled={disabled}
+              readOnly={locked}
               aria-label={label}
               onChange={(e) => handleChange(e, i)}
               onKeyDown={(e) => handleKeyDown(e, i)}

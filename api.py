@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
 from digit_recognition import load_model, MODEL_PATH
+from checker import check_answers
 from pipeline import solve_image, NoGridFound
 from solver import find_solutions
 
@@ -43,17 +44,31 @@ app.add_middleware(
 )
 
 
+def _check_shape(g):
+    if len(g) != 9 or any(len(row) != 9 for row in g):
+        raise ValueError("grid must be 9 rows of 9 numbers")
+    if any(not 0 <= v <= 9 for row in g for v in row):
+        raise ValueError("cells must be 0 (blank) to 9")
+    return g
+
+
 class GridIn(BaseModel):
     grid: List[List[int]]
 
     @field_validator("grid")
     @classmethod
     def check_shape(cls, g):
-        if len(g) != 9 or any(len(row) != 9 for row in g):
-            raise ValueError("grid must be 9 rows of 9 numbers")
-        if any(not 0 <= v <= 9 for row in g for v in row):
-            raise ValueError("cells must be 0 (blank) to 9")
-        return g
+        return _check_shape(g)
+
+
+class CheckIn(BaseModel):
+    givens: List[List[int]]  # the locked clues
+    grid: List[List[int]]    # clues plus the player's answers
+
+    @field_validator("givens", "grid")
+    @classmethod
+    def check_shape(cls, g):
+        return _check_shape(g)
 
 
 def _message(count, uncertain):
@@ -112,3 +127,12 @@ def solve_grid(body: GridIn):
         "solution": solutions[0] if solutions else None,
         "message": _message(len(solutions), []),
     }
+
+
+@app.post("/check")
+def check(body: CheckIn):
+    """Grade the player's answers against the puzzle's unique solution."""
+    try:
+        return check_answers(body.givens, body.grid)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
