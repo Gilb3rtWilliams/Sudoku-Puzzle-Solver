@@ -627,6 +627,73 @@ body {
   cursor: pointer;
 }
 
+.cell.pointed::before {
+  content: '';
+  position: absolute;
+  inset: 8%;
+  border: 2px dashed var(--focus);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.mistake-steps {
+  margin: 0 0 0.8rem;
+  font-size: 0.92rem;
+}
+
+.mistake-steps summary {
+  width: fit-content;
+  color: var(--focus);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mistake-steps summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.mistake-steps ol {
+  margin: 0.6rem 0 0;
+  padding-left: 1.4rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mistake-steps li::marker {
+  color: var(--chalk-soft);
+  font-weight: 700;
+}
+
+.step-btn {
+  appearance: none;
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  font: inherit;
+  color: var(--chalk-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.step-btn:hover {
+  background: var(--panel-hover);
+}
+
+.step-btn-on {
+  color: var(--chalk);
+  background: var(--panel-hover);
+  border-color: var(--focus);
+}
+
+.step-btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 @media (max-width: 52rem) {
   /* on a phone the board comes first and the review panel sits under it */
   .workspace-play .review {

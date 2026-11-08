@@ -1,19 +1,17 @@
 """Grade a player's answers against a puzzle's unique solution.
 
-Phase 1 of the "check my answers" feature: finds every wrong cell, says whether its digit clashes
-with a visible digit in its row, column or box, and carries the correct digit (the UI keeps it
-hidden until the player asks). Deeper "why is this digit wrong" reasoning builds on this later.
+Finds every wrong cell and explains it, from most to least direct:
+  clash     the digit repeats one already in its row, column or box
+  logic     no visible clash, but the cell's right digit follows from a chain of deductions
+            (explain.py), which is walked through step by step
+  mismatch  wrong, but the reasoning needs a technique the explainer doesn't have yet
+The correct digit is always carried along; the UI keeps it hidden until the player asks.
 
 Grids are lists of 9 lists of 9 ints, 0 = blank. Rows and columns in the output are 0-indexed;
 the human-readable text is 1-indexed.
 """
+from explain import BOX_NAMES, Explainer
 from solver import PEERS, find_solutions
-
-BOX_NAMES = [
-    "top-left", "top-middle", "top-right",
-    "middle-left", "centre", "middle-right",
-    "bottom-left", "bottom-middle", "bottom-right",
-]
 
 
 def _box(r, c):
@@ -73,7 +71,8 @@ def _explain_clash(grid, solution, r, c, clash):
 
 def _explain_mismatch(digit):
     return (f"{digit} doesn't repeat anything in its row, column or box, but it isn't the digit "
-            f"this puzzle's only solution needs here.")
+            f"this puzzle's only solution needs here. Proving why takes a more advanced technique "
+            f"than I can walk through yet.")
 
 
 def check_answers(givens, grid):
@@ -101,6 +100,7 @@ def check_answers(givens, grid):
 
     entered = correct = blank = 0
     mistakes = []
+    explainer = None  # built on first use; only needed for wrong digits that clash with nothing
     for r in range(9):
         for c in range(9):
             if givens[r][c]:
@@ -114,17 +114,30 @@ def check_answers(givens, grid):
                 correct += 1
                 continue
             clashes = _clashes(grid, givens, r, c)
+            steps, technique = [], None
+            highlights = [{"row": x["row"], "col": x["col"]} for x in clashes]
             if clashes:
                 kind, text = "clash", _explain_clash(grid, solution, r, c, clashes[0])
             else:
-                kind, text = "mismatch", _explain_mismatch(digit)
+                if explainer is None:
+                    explainer = Explainer(givens)
+                reasoning = explainer.explain(r * 9 + c, digit, solution[r][c])
+                if reasoning:
+                    kind, text = "logic", reasoning["explanation"]
+                    steps, technique = reasoning["steps"], reasoning["technique"]
+                    highlights = reasoning["highlights"]
+                else:
+                    kind, text = "mismatch", _explain_mismatch(digit)
             mistakes.append({
                 "row": r,
                 "col": c,
                 "entered": digit,
                 "kind": kind,
                 "explanation": text,
+                "technique": technique,
                 "clashes": clashes,
+                "highlights": highlights,
+                "steps": steps,
                 "correct_digit": solution[r][c],
             })
 

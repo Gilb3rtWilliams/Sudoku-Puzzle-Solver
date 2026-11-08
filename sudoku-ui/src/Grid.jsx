@@ -10,9 +10,11 @@ import { SIZE, rowOf, colOf } from './sudoku.js'
  * - `givens`: when playing, the locked clues (flat array, 0 = player-editable); null while setting up
  * - `wrong`: Set of indexes the checker marked wrong
  * - `related`: Set of indexes to wash in blue (the cells that explain a mistake)
+ * - `pointed`: Set of indexes to circle in dashed blue (the cell an explanation step deduces)
+ * - `hint`: {index, digit} shown in pencil in that blank cell
  * - `ref`: exposes focus(i) so a mistake card can jump to its cell
  */
-export default function Grid({ grid, solution, uncertain, conflicts, disabled, onChange, givens = null, wrong, related, ref }) {
+export default function Grid({ grid, solution, uncertain, conflicts, disabled, onChange, givens = null, wrong, related, pointed, hint, ref }) {
   const inputs = useRef([])
   useImperativeHandle(ref, () => ({ focus: (i) => inputs.current[i]?.focus() }), [])
 
@@ -49,7 +51,8 @@ export default function Grid({ grid, solution, uncertain, conflicts, disabled, o
         else if (givens && value) classes.push('entry')
         if (wrong?.has(i)) classes.push('wrong')
         if (related?.has(i)) classes.push('related')
-        const solved = !value && solution ? solution[i] : 0
+        if (pointed?.has(i)) classes.push('pointed')
+        const solved = !value ? (hint?.index === i ? hint.digit : solution ? solution[i] : 0) : 0
         const label =
           `Row ${r + 1}, column ${c + 1}` +
           (locked ? ', given clue' : '') +

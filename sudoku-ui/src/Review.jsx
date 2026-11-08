@@ -3,7 +3,7 @@
  * card per wrong cell. Each card explains the mistake first; the correct digit stays hidden until
  * the player asks for it, so they can have another go.
  */
-export default function Review({ result, active, revealed, onActivate, onReveal, onFill }) {
+export default function Review({ result, active, activeStep, revealed, onActivate, onStep, onReveal, onFill }) {
   if (!result) {
     return (
       <section className="review" aria-label="Review">
@@ -51,6 +51,23 @@ export default function Review({ result, active, revealed, onActivate, onReveal,
                   <span className="mistake-entered">you entered {m.entered}</span>
                 </button>
                 <p className="mistake-why">{m.explanation}</p>
+                {m.steps.length > 0 && (
+                  <details className="mistake-steps">
+                    <summary>Show the {m.steps.length} step{m.steps.length === 1 ? '' : 's'} this relies on</summary>
+                    <ol>
+                      {m.steps.map((st) => {
+                        const on = active === i && activeStep === st.number
+                        return (
+                          <li key={st.number}>
+                            <button type="button" className={`step-btn${on ? ' step-btn-on' : ''}`} aria-pressed={on} onClick={() => onStep(m, st)}>
+                              {st.text}
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ol>
+                  </details>
+                )}
                 {isRevealed ? (
                   <p className="mistake-answer">
                     The correct digit is <strong>{m.correct_digit}</strong>.{' '}

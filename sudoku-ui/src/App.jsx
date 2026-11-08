@@ -28,6 +28,7 @@ export default function App() {
   const [checkResult, setCheckResult] = useState(null)
   const [revealed, setRevealed] = useState(() => new Set())
   const [active, setActive] = useState(null) // index of the mistake being looked at
+  const [activeStep, setActiveStep] = useState(null) // number of the explanation step being looked at
   const gridRef = useRef(null)
 
   const playing = givens !== null
@@ -40,10 +41,18 @@ export default function App() {
     () => (checkResult ? new Set(checkResult.mistakes.map((m) => m.row * 9 + m.col)) : NO_CELLS),
     [checkResult],
   )
-  const relatedCells = useMemo(() => {
+  // Cells to wash in blue (the evidence) and the one to point at (the cell a step deduces).
+  const { relatedCells, pointedCells, hint } = useMemo(() => {
     const m = checkResult?.mistakes.find((x) => x.row * 9 + x.col === active)
-    return m ? new Set(m.clashes.map((c) => c.row * 9 + c.col)) : NO_CELLS
-  }, [checkResult, active])
+    if (!m) return { relatedCells: NO_CELLS, pointedCells: NO_CELLS, hint: null }
+    const step = activeStep ? m.steps.find((x) => x.number === activeStep) : null
+    const evidence = step ? step.highlights : m.highlights
+    return {
+      relatedCells: new Set(evidence.map((c) => c.row * 9 + c.col)),
+      pointedCells: step ? new Set([step.row * 9 + step.col]) : NO_CELLS,
+      hint: step ? { index: step.row * 9 + step.col, digit: step.digit } : null,
+    }
+  }, [checkResult, active, activeStep])
 
   useEffect(() => () => photoUrlRef.current && URL.revokeObjectURL(photoUrlRef.current), [])
 
@@ -56,6 +65,7 @@ export default function App() {
     setCheckResult(null)
     setRevealed(new Set())
     setActive(null)
+    setActiveStep(null)
   }
 
   const handleFile = async (file) => {
@@ -114,7 +124,10 @@ export default function App() {
         next.delete(i)
         return next
       })
-      if (active === i) setActive(null)
+      if (active === i) {
+        setActive(null)
+        setActiveStep(null)
+      }
     }
   }
 
@@ -170,6 +183,7 @@ export default function App() {
       setCheckResult(res)
       setRevealed(new Set())
       setActive(null)
+      setActiveStep(null)
       say('')
     } catch (err) {
       say(err.message, true)
@@ -213,7 +227,13 @@ export default function App() {
   const handleActivate = (m) => {
     const i = m.row * 9 + m.col
     setActive(i)
+    setActiveStep(null)
     gridRef.current?.focus(i)
+  }
+
+  const handleStep = (m, step) => {
+    setActive(m.row * 9 + m.col)
+    setActiveStep((cur) => (cur === step.number && active === m.row * 9 + m.col ? null : step.number))
   }
 
   const handleReveal = (i) => setRevealed((s) => new Set(s).add(i))
@@ -247,8 +267,10 @@ export default function App() {
           <Review
             result={checkResult}
             active={active}
+            activeStep={activeStep}
             revealed={revealed}
             onActivate={handleActivate}
+            onStep={handleStep}
             onReveal={handleReveal}
             onFill={handleCell}
           />
@@ -273,6 +295,8 @@ export default function App() {
             givens={givens}
             wrong={wrongCells}
             related={relatedCells}
+            pointed={pointedCells}
+            hint={hint}
             disabled={busy === 'reading'}
             onChange={handleCell}
           />

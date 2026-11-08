@@ -13,6 +13,12 @@ PUZZLE = [
 SOLUTION = solve(PUZZLE)
 
 
+def parse(line):
+    """An 81-character puzzle string ('.' or '0' = blank) as a grid."""
+    digits = [0 if ch in ".0" else int(ch) for ch in line]
+    return [digits[r * 9:(r + 1) * 9] for r in range(9)]
+
+
 def with_answers(**cells):
     """PUZZLE plus answers given as r{row}c{col}=digit (0-indexed)."""
     grid = [row[:] for row in PUZZLE]
@@ -56,14 +62,32 @@ def test_clash_with_a_given_clue():
     assert m["clashes"][0]["given"] is True
 
 
-def test_mismatch_without_any_visible_clash():
+def test_wrong_digit_without_a_clash_gets_a_logical_explanation():
     # Find a wrong digit that repeats nothing in the cell's row, column or box.
     r, c = 0, 2
     peer_digits = {PUZZLE[p // 9][p % 9] for p in PEERS[r * 9 + c]}
     digit = next(d for d in range(1, 10) if d != SOLUTION[r][c] and d not in peer_digits)
     m = mistake_at(check_answers(PUZZLE, with_answers(r0c2=digit)), r, c)
-    assert m["kind"] == "mismatch" and m["clashes"] == []
-    assert "only solution" in m["explanation"]
+    assert m["kind"] == "logic" and m["clashes"] == []
+    assert m["technique"] in ("naked_single", "hidden_single")
+    assert f"Your {digit} is wrong" in m["explanation"]
+    assert m["highlights"]
+    assert m["correct_digit"] == SOLUTION[r][c]
+
+
+def test_hard_puzzle_falls_back_to_an_honest_generic_message():
+    hard = parse("4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......")
+    sol = solve(hard)
+    # Wrong answers in every blank cell: at least one lies beyond the singles-only explainer.
+    grid = [row[:] for row in hard]
+    for r in range(9):
+        for c in range(9):
+            if not hard[r][c]:
+                grid[r][c] = sol[r][c] % 9 + 1
+    kinds = {m["kind"] for m in check_answers(hard, grid)["mistakes"]}
+    assert "mismatch" in kinds
+    fallback = next(m for m in check_answers(hard, grid)["mistakes"] if m["kind"] == "mismatch")
+    assert "more advanced technique" in fallback["explanation"] and fallback["steps"] == []
 
 
 def test_two_wrong_answers_clashing_with_each_other():
