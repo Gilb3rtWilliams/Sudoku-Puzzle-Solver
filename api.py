@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
 from digit_recognition import load_model, MODEL_PATH
-from checker import check_answers
+from checker import check_answers, hint
 from pipeline import solve_image, NoGridFound
 from solver import find_solutions
 
@@ -134,5 +134,14 @@ def check(body: CheckIn):
     """Grade the player's answers against the puzzle's unique solution."""
     try:
         return check_answers(body.givens, body.grid)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/hint")
+def get_hint(body: CheckIn):
+    """The best next move from the player's current board, as a nudge, then a reason, then the digit."""
+    try:
+        return hint(body.givens, body.grid)
     except ValueError as e:
         raise HTTPException(422, str(e))

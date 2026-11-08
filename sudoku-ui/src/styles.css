@@ -694,6 +694,47 @@ body {
   outline-offset: 2px;
 }
 
+.mistake-kind {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--ruling-strong);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--chalk-soft);
+}
+
+.hint-card {
+  margin-top: 1.25rem;
+  padding: 0.9rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--ruling);
+  border-left: 3px solid var(--focus);
+  border-radius: 0.5rem;
+}
+
+.hint-card-active {
+  background: var(--panel-hover);
+  border-color: var(--focus);
+}
+
+.hint-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+
+.hint-nudge {
+  margin: 0 0 0.7rem;
+}
+
+.hint-warn {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+  color: var(--red-text);
+}
+
 @media (max-width: 52rem) {
   /* on a phone the board comes first and the review panel sits under it */
   .workspace-play .review {

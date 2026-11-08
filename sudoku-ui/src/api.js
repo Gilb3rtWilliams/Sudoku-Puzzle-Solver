@@ -42,3 +42,13 @@ export function checkAnswers(givens, grid) {
     body: JSON.stringify({ givens: rows(givens), grid: rows(grid) }),
   })
 }
+
+/** The best next move from the player's current board: a nudge, then a reason, then the digit. */
+export function getHint(givens, grid) {
+  const rows = (flat) => Array.from({ length: 9 }, (_, r) => flat.slice(r * 9, r * 9 + 9))
+  return request('/hint', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ givens: rows(givens), grid: rows(grid) }),
+  })
+}

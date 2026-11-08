@@ -2,9 +2,11 @@
 
 Finds every wrong cell and explains it, from most to least direct:
   clash     the digit repeats one already in its row, column or box
-  logic     no visible clash, but the cell's right digit follows from a chain of deductions
-            (explain.py), which is walked through step by step
-  mismatch  wrong, but the reasoning needs a technique the explainer doesn't have yet
+  logic          no visible clash, but the cell's right digit follows from a chain of deductions
+                 (explain.py), which is walked through step by step
+  contradiction  that chain is out of reach, but supposing the player's digit and following the
+                 logic from there breaks the puzzle, and that is shown
+  mismatch       wrong, but neither argument could be built (the correct digit is still given)
 The correct digit is always carried along; the UI keeps it hidden until the player asks.
 
 Grids are lists of 9 lists of 9 ints, 0 = blank. Rows and columns in the output are 0-indexed;
@@ -71,7 +73,7 @@ def _explain_clash(grid, solution, r, c, clash):
 
 def _explain_mismatch(digit):
     return (f"{digit} doesn't repeat anything in its row, column or box, but it isn't the digit "
-            f"this puzzle's only solution needs here. Proving why takes a more advanced technique "
+            f"this puzzle's only solution needs here. Proving why takes a deeper argument "
             f"than I can walk through yet.")
 
 
@@ -122,8 +124,13 @@ def check_answers(givens, grid):
                 if explainer is None:
                     explainer = Explainer(givens)
                 reasoning = explainer.explain(r * 9 + c, digit, solution[r][c])
+                kind = "logic"
+                if not reasoning:
+                    # Out of reach of the direct chain: suppose the player's digit and look for a contradiction.
+                    reasoning = Explainer(givens, assume=(r * 9 + c, digit)).explain_contradiction()
+                    kind = "contradiction"
                 if reasoning:
-                    kind, text = "logic", reasoning["explanation"]
+                    text = reasoning["explanation"]
                     steps, technique = reasoning["steps"], reasoning["technique"]
                     highlights = reasoning["highlights"]
                 else:
@@ -162,3 +169,41 @@ def check_answers(givens, grid):
         "blank": blank,
         "mistakes": mistakes,
     }
+
+
+def hint(givens, grid):
+    """The most direct next move from the player's current board, in tiers the UI reveals one at a time.
+
+    Only answers that match the solution count as progress; wrong ones are ignored here (and counted
+    in `wrong_entries`) so the hint is never built on a mistake.
+    """
+    for r in range(9):
+        for c in range(9):
+            if givens[r][c] and grid[r][c] != givens[r][c]:
+                raise ValueError(f"Row {r + 1}, column {c + 1} is a given clue and can't be changed.")
+
+    solutions = find_solutions(givens, limit=2)
+    if len(solutions) != 1:
+        return {"status": "unsolvable" if not solutions else "not_unique",
+                "message": "There has to be exactly one solution before I can give hints."}
+    solution = solutions[0]
+
+    start = [[solution[r][c] if grid[r][c] == solution[r][c] else 0 for c in range(9)] for r in range(9)]
+    wrong_entries = sum(1 for r in range(9) for c in range(9) if grid[r][c] and grid[r][c] != solution[r][c])
+    blanks = [(r, c) for r in range(9) for c in range(9) if not start[r][c]]
+    if not blanks:
+        return {"status": "complete", "message": "Nothing left to find: every cell is right."}
+
+    found = Explainer(start).best_hint()
+    if found is None:
+        # Beyond the techniques: still point at a cell, but say honestly that there is no step-by-step reason.
+        r, c = blanks[0]
+        found = {
+            "row": r, "col": c, "correct_digit": solution[r][c], "technique": None,
+            "nudge": f"Look at row {r + 1}, column {c + 1}.",
+            "nudge_cells": [{"row": r, "col": c}],
+            "explanation": "This position needs a deeper argument than I can walk through step by step, "
+                           "so I can only tell you the digit.",
+            "highlights": [], "targets": [{"row": r, "col": c}], "steps": [],
+        }
+    return {"status": "ok", "wrong_entries": wrong_entries, **found}

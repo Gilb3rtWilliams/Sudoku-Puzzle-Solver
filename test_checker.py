@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from checker import check_answers
+from checker import check_answers, hint
 from solver import PEERS, solve
 
 PUZZLE = [
@@ -75,19 +75,44 @@ def test_wrong_digit_without_a_clash_gets_a_logical_explanation():
     assert m["correct_digit"] == SOLUTION[r][c]
 
 
-def test_hard_puzzle_falls_back_to_an_honest_generic_message():
-    hard = parse("4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......")
-    sol = solve(hard)
-    # Wrong answers in every blank cell: at least one lies beyond the singles-only explainer.
-    grid = [row[:] for row in hard]
+def all_wrong(puzzle):
+    """The puzzle with a wrong digit in every blank cell, and its solution."""
+    sol = solve(puzzle)
+    grid = [row[:] for row in puzzle]
     for r in range(9):
         for c in range(9):
-            if not hard[r][c]:
+            if not puzzle[r][c]:
                 grid[r][c] = sol[r][c] % 9 + 1
-    kinds = {m["kind"] for m in check_answers(hard, grid)["mistakes"]}
-    assert "mismatch" in kinds
-    fallback = next(m for m in check_answers(hard, grid)["mistakes"] if m["kind"] == "mismatch")
-    assert "more advanced technique" in fallback["explanation"] and fallback["steps"] == []
+    return grid
+
+
+STALLED = parse("5...........8.4.5....69.2.149.....1.6.87.........8...4...1..7...62.....581..6.9..")
+INKALA = parse("8..........36......7..9.2...5...7.......457.....1...3...1....68..85...1..9....4..")
+
+
+def test_advanced_techniques_explain_a_puzzle_singles_cannot_solve():
+    hard = parse("4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......")
+    kinds = {m["kind"] for m in check_answers(hard, all_wrong(hard))["mistakes"]}
+    assert "mismatch" not in kinds and "logic" in kinds
+
+
+def test_beyond_the_chain_a_contradiction_is_shown():
+    mistakes = check_answers(STALLED, all_wrong(STALLED))["mistakes"]
+    contradictions = [m for m in mistakes if m["kind"] == "contradiction"]
+    assert contradictions
+    m = contradictions[0]
+    assert m["technique"] == "contradiction" and m["steps"][0]["technique"] == "assumption"
+    assert f"Suppose row {m['row'] + 1}, column {m['col'] + 1} is {m['entered']}" in m["explanation"]
+    assert m["highlights"] and m["correct_digit"] == solve(STALLED)[m["row"]][m["col"]]
+
+
+def test_when_nothing_can_be_argued_the_message_is_honest():
+    mistakes = check_answers(INKALA, all_wrong(INKALA))["mistakes"]
+    fallback = [m for m in mistakes if m["kind"] == "mismatch"]
+    assert fallback  # an extreme puzzle: some wrong digits can't be argued with these techniques
+    for m in fallback:
+        assert "deeper argument" in m["explanation"] and m["steps"] == []
+        assert m["correct_digit"] == solve(INKALA)[m["row"]][m["col"]]
 
 
 def test_two_wrong_answers_clashing_with_each_other():
@@ -138,3 +163,52 @@ def test_random_answers_are_graded_exactly():
                 assert grid[cl["row"]][cl["col"]] == m["entered"]
             assert (m["kind"] == "clash") == bool(m["clashes"])
         assert res["entered"] == res["correct"] + res["wrong"]
+
+
+# ---------- hints ----------
+def test_hint_points_at_a_blank_cell_with_the_true_digit_and_tiers():
+    h = hint(PUZZLE, PUZZLE)
+    assert h["status"] == "ok" and h["wrong_entries"] == 0
+    assert PUZZLE[h["row"]][h["col"]] == 0 and h["correct_digit"] == SOLUTION[h["row"]][h["col"]]
+    assert h["nudge"].startswith("Look at")
+    assert h["nudge_cells"], "the nudge must say where to look"
+    assert h["explanation"] and h["technique"] in ("naked_single", "hidden_single")
+    assert {"row": h["row"], "col": h["col"]} in h["targets"]
+
+
+def test_hint_builds_on_correct_answers_and_ignores_wrong_ones():
+    grid = with_answers(r0c2=4, r0c3=6, r0c5=9)   # two right, one wrong
+    h = hint(PUZZLE, grid)
+    assert h["wrong_entries"] == 1
+    assert (h["row"], h["col"]) not in [(0, 2), (0, 3)]          # never re-suggests what is already right
+    assert h["correct_digit"] == SOLUTION[h["row"]][h["col"]]
+
+
+def test_hint_on_a_finished_or_invalid_board():
+    assert hint(PUZZLE, SOLUTION)["status"] == "complete"
+    with pytest.raises(ValueError):
+        hint(PUZZLE, with_answers(r0c0=9))
+    empty = [[0] * 9 for _ in range(9)]
+    assert hint(empty, empty)["status"] == "not_unique"
+
+
+def test_hint_is_honest_when_no_step_exists():
+    h = hint(INKALA, INKALA)
+    assert h["status"] == "ok" and h["technique"] is None and h["steps"] == []
+    assert h["correct_digit"] == solve(INKALA)[h["row"]][h["col"]]
+    assert "deeper argument" in h["explanation"]
+
+
+def test_random_boards_always_get_a_true_hint():
+    rng = random.Random(4)
+    blanks = [(r, c) for r in range(9) for c in range(9) if not PUZZLE[r][c]]
+    for _ in range(60):
+        grid = [row[:] for row in PUZZLE]
+        for r, c in rng.sample(blanks, rng.randint(0, len(blanks) - 1)):
+            grid[r][c] = SOLUTION[r][c] if rng.random() < 0.8 else rng.randint(1, 9)
+        h = hint(PUZZLE, grid)
+        if h["status"] == "complete":
+            continue
+        assert h["correct_digit"] == SOLUTION[h["row"]][h["col"]]
+        assert grid[h["row"]][h["col"]] != SOLUTION[h["row"]][h["col"]]   # it is a cell still to get right
+        assert [s["number"] for s in h["steps"]] == list(range(1, len(h["steps"]) + 1))

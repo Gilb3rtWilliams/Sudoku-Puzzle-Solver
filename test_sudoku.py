@@ -165,3 +165,18 @@ def test_api_check_rejects_changed_given_and_bad_shape(client):
     grid[0][0] = 9
     assert client.post("/check", json={"givens": PUZZLE, "grid": grid}).status_code == 422
     assert client.post("/check", json={"givens": PUZZLE, "grid": [[0] * 9] * 8}).status_code == 422
+
+
+# ---------- /hint ----------
+def test_api_hint_returns_a_true_next_move(client):
+    r = client.post("/hint", json={"givens": PUZZLE, "grid": PUZZLE})
+    body = r.json()
+    assert r.status_code == 200 and body["status"] == "ok"
+    assert PUZZLE[body["row"]][body["col"]] == 0
+    assert body["nudge"] and body["explanation"] and "correct_digit" in body
+
+
+def test_api_hint_rejects_changed_given(client):
+    grid = [row[:] for row in PUZZLE]
+    grid[0][0] = 9
+    assert client.post("/hint", json={"givens": PUZZLE, "grid": grid}).status_code == 422

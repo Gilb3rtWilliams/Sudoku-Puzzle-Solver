@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Grid from './Grid.jsx'
 import PhotoPanel from './PhotoPanel.jsx'
 import Review from './Review.jsx'
-import { checkAnswers, solveGrid, solvePhoto } from './api.js'
+import { checkAnswers, getHint, solveGrid, solvePhoto } from './api.js'
 import { emptyGrid, findConflicts, sameGrid, toFlat } from './sudoku.js'
 
 const MAX_BYTES = 10 * 1024 * 1024
@@ -29,6 +29,8 @@ export default function App() {
   const [revealed, setRevealed] = useState(() => new Set())
   const [active, setActive] = useState(null) // index of the mistake being looked at
   const [activeStep, setActiveStep] = useState(null) // number of the explanation step being looked at
+  const [hint, setHint] = useState(null) // the current hint, if one was asked for
+  const [hintLevel, setHintLevel] = useState(0) // 0 nudge, 1 reasoning, 2 answer
   const gridRef = useRef(null)
 
   const playing = givens !== null
@@ -41,18 +43,32 @@ export default function App() {
     () => (checkResult ? new Set(checkResult.mistakes.map((m) => m.row * 9 + m.col)) : NO_CELLS),
     [checkResult],
   )
-  // Cells to wash in blue (the evidence) and the one to point at (the cell a step deduces).
-  const { relatedCells, pointedCells, hint } = useMemo(() => {
-    const m = checkResult?.mistakes.find((x) => x.row * 9 + x.col === active)
-    if (!m) return { relatedCells: NO_CELLS, pointedCells: NO_CELLS, hint: null }
-    const step = activeStep ? m.steps.find((x) => x.number === activeStep) : null
-    const evidence = step ? step.highlights : m.highlights
-    return {
-      relatedCells: new Set(evidence.map((c) => c.row * 9 + c.col)),
-      pointedCells: step ? new Set([step.row * 9 + step.col]) : NO_CELLS,
-      hint: step ? { index: step.row * 9 + step.col, digit: step.digit } : null,
+  // What the grid shows for the item being looked at (a mistake or the hint):
+  // evidence cells washed in blue, deduced cells circled, and a pencil digit where a step places one.
+  const { relatedCells, pointedCells, hintDigit } = useMemo(() => {
+    const none = { relatedCells: NO_CELLS, pointedCells: NO_CELLS, hintDigit: null }
+    const asHint = active === 'hint' && hint
+    const item = asHint ? hint : checkResult?.mistakes.find((x) => x.row * 9 + x.col === active)
+    if (!item) return none
+    const step = activeStep ? item.steps.find((x) => x.number === activeStep) : null
+    const idx = (c) => c.row * 9 + c.col
+    if (step) {
+      return {
+        relatedCells: new Set(step.highlights.map(idx)),
+        pointedCells: new Set(step.targets.map(idx)),
+        hintDigit: step.digit != null ? { index: step.row * 9 + step.col, digit: step.digit } : null,
+      }
     }
-  }, [checkResult, active, activeStep])
+    if (asHint) {
+      if (hintLevel === 0) return { ...none, relatedCells: new Set(hint.nudge_cells.map(idx)) }
+      return {
+        relatedCells: new Set(hint.highlights.map(idx)),
+        pointedCells: new Set(hint.targets.map(idx)),
+        hintDigit: hintLevel >= 2 ? { index: hint.row * 9 + hint.col, digit: hint.correct_digit } : null,
+      }
+    }
+    return { ...none, relatedCells: new Set(item.highlights.map(idx)) }
+  }, [checkResult, hint, hintLevel, active, activeStep])
 
   useEffect(() => () => photoUrlRef.current && URL.revokeObjectURL(photoUrlRef.current), [])
 
@@ -66,6 +82,8 @@ export default function App() {
     setRevealed(new Set())
     setActive(null)
     setActiveStep(null)
+    setHint(null)
+    setHintLevel(0)
   }
 
   const handleFile = async (file) => {
@@ -115,6 +133,15 @@ export default function App() {
     setSolution(null)
     setSolutionCount(null)
     say('')
+    if (hint) {
+      // A hint describes the board as it was.
+      setHint(null)
+      setHintLevel(0)
+      if (active === 'hint') {
+        setActive(null)
+        setActiveStep(null)
+      }
+    }
     if (checkResult) {
       // This cell is being redone, so drop its verdict; the rest stay until the next check.
       setCheckResult((r) => r && { ...r, stale: true, mistakes: r.mistakes.filter((m) => m.row * 9 + m.col !== i) })
@@ -182,13 +209,41 @@ export default function App() {
       if (res.status !== 'ok') return say(res.message, true)
       setCheckResult(res)
       setRevealed(new Set())
-      setActive(null)
+      if (active !== 'hint') {
+        setActive(null)
+        setActiveStep(null)
+      }
+      say('')
+    } catch (err) {
+      say(err.message, true)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const handleHint = async () => {
+    setBusy('hinting')
+    try {
+      const res = await getHint(givens, grid)
+      if (res.status !== 'ok') return say(res.message, res.status !== 'complete')
+      setHint(res)
+      setHintLevel(0)
+      setActive('hint')
       setActiveStep(null)
       say('')
     } catch (err) {
       say(err.message, true)
     } finally {
       setBusy(null)
+    }
+  }
+
+  const closeHint = () => {
+    setHint(null)
+    setHintLevel(0)
+    if (active === 'hint') {
+      setActive(null)
+      setActiveStep(null)
     }
   }
 
@@ -231,9 +286,11 @@ export default function App() {
     gridRef.current?.focus(i)
   }
 
-  const handleStep = (m, step) => {
-    setActive(m.row * 9 + m.col)
-    setActiveStep((cur) => (cur === step.number && active === m.row * 9 + m.col ? null : step.number))
+  const handleStep = (owner, step) => {
+    // `owner` is a mistake, or the string 'hint'
+    const key = owner === 'hint' ? 'hint' : owner.row * 9 + owner.col
+    setActive(key)
+    setActiveStep((cur) => (cur === step.number && active === key ? null : step.number))
   }
 
   const handleReveal = (i) => setRevealed((s) => new Set(s).add(i))
@@ -268,6 +325,10 @@ export default function App() {
             result={checkResult}
             active={active}
             activeStep={activeStep}
+            hint={hint}
+            hintLevel={hintLevel}
+            onHintLevel={setHintLevel}
+            onHintClose={closeHint}
             revealed={revealed}
             onActivate={handleActivate}
             onStep={handleStep}
@@ -296,7 +357,7 @@ export default function App() {
             wrong={wrongCells}
             related={relatedCells}
             pointed={pointedCells}
-            hint={hint}
+            hint={hintDigit}
             disabled={busy === 'reading'}
             onChange={handleCell}
           />
@@ -310,6 +371,9 @@ export default function App() {
               <>
                 <button type="button" className="btn btn-primary" onClick={handleCheck} disabled={!!busy || answers === 0}>
                   {busy === 'checking' ? 'Checking…' : 'Check my answers'}
+                </button>
+                <button type="button" className="btn" onClick={handleHint} disabled={!!busy}>
+                  {busy === 'hinting' ? 'Thinking…' : 'Hint'}
                 </button>
                 <button type="button" className="btn" onClick={handleClearAnswers} disabled={!!busy || answers === 0}>
                   Clear my answers
